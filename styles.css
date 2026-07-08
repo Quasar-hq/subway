@@ -89,6 +89,22 @@ input:focus-visible {
   opacity: 0.08;
 }
 
+.sync-status {
+  grid-column: 1 / -1;
+  margin: -8px 0 0;
+  color: var(--slate);
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+}
+
+.sync-status.good {
+  color: var(--good);
+}
+
+.sync-status.warn {
+  color: var(--warn);
+}
+
 .topbar h1 {
   margin: 0;
   font-size: clamp(3rem, 9vw, 6.2rem);

@@ -9,6 +9,8 @@ create table if not exists public.reference_time_events (
 );
 
 alter table public.reference_time_events enable row level security;
+grant usage on schema public to anon;
+grant insert, select on public.reference_time_events to anon;
 
 do $$
 begin

@@ -87,6 +87,7 @@ const els = {
   baseTime: document.getElementById("base-time"),
   nowTime: document.getElementById("now-time"),
   recalc: document.getElementById("recalc"),
+  syncStatus: document.getElementById("sync-status"),
   timelineOutbound: document.getElementById("timeline-outbound"),
   timelineInbound: document.getElementById("timeline-inbound"),
   outboundDeparture: document.getElementById("outbound-departure"),
@@ -99,6 +100,15 @@ const els = {
 
 function getSupabaseConfig() {
   return window.SUPABASE_CONFIG || {};
+}
+
+function setSyncStatus(message, tone = "muted") {
+  if (!els.syncStatus) {
+    return;
+  }
+
+  els.syncStatus.textContent = message;
+  els.syncStatus.className = `sync-status ${tone}`;
 }
 
 function pad(num) {
@@ -121,9 +131,10 @@ function syncReferenceTime(date) {
   els.baseTime.value = formatInputDate(date);
 }
 
-function persistReferenceEvent(actionType) {
+async function persistReferenceEvent(actionType) {
   const { url, anonKey } = getSupabaseConfig();
   if (!url || !anonKey) {
+    setSyncStatus("Supabase 설정이 비어 있어 저장하지 않았습니다.", "warn");
     return;
   }
 
@@ -136,16 +147,31 @@ function persistReferenceEvent(actionType) {
     source: "web",
   };
 
-  fetch(endpoint, {
-    method: "POST",
-    headers: {
-      apikey: anonKey,
-      Authorization: `Bearer ${anonKey}`,
-      "Content-Type": "application/json",
-      Prefer: "return=minimal",
-    },
-    body: JSON.stringify(payload),
-  }).catch(() => {});
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        setSyncStatus("Supabase 테이블이 아직 없어요. supabase-schema.sql을 실행해 주세요.", "warn");
+      } else {
+        setSyncStatus(`Supabase 저장 실패 (${response.status})`, "warn");
+      }
+      return;
+    }
+
+    setSyncStatus("Supabase에 저장됨", "good");
+  } catch {
+    setSyncStatus("Supabase 연결 실패", "warn");
+  }
 }
 
 function getDayTypeKey(date) {
@@ -315,6 +341,7 @@ function render() {
 
 function hydrateForm() {
   syncReferenceTime(state.referenceTime);
+  setSyncStatus("Supabase 연결 대기 중");
 }
 
 els.baseTime.addEventListener("change", () => {
@@ -328,12 +355,12 @@ els.baseTime.addEventListener("change", () => {
 els.nowTime.addEventListener("click", () => {
   syncReferenceTime(new Date());
   render();
-  persistReferenceEvent("current_time");
+  void persistReferenceEvent("current_time");
 });
 
 els.recalc.addEventListener("click", () => {
   render();
-  persistReferenceEvent("recalc");
+  void persistReferenceEvent("recalc");
 });
 
 hydrateForm();
