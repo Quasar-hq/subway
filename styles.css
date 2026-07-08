@@ -381,7 +381,7 @@ input:focus-visible {
   }
 
   .topbar {
-    gap: 14px;
+    gap: 10px;
     padding: 12px 0 16px;
     margin-bottom: 16px;
   }
@@ -399,7 +399,7 @@ input:focus-visible {
   .topbar-actions {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: 6px;
   }
 
   .route-card {
@@ -426,6 +426,10 @@ input:focus-visible {
 
   .field.compact {
     min-width: 0;
+  }
+
+  .field {
+    gap: 4px;
   }
 
   .primary-btn,
