@@ -398,9 +398,9 @@ input:focus-visible {
 
   .topbar-actions {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: end;
-    gap: 6px 8px;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 6px;
   }
 
   .route-card {
@@ -427,7 +427,6 @@ input:focus-visible {
 
   .field.compact {
     min-width: 0;
-    grid-column: 1 / 2;
   }
 
   .field {
@@ -441,10 +440,10 @@ input:focus-visible {
 
   .secondary-btn {
     white-space: nowrap;
+    width: 100%;
   }
 
   #recalc {
-    grid-column: 1 / -1;
     width: 100%;
   }
 
