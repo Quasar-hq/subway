@@ -138,13 +138,14 @@ async function persistReferenceEvent(actionType) {
     return;
   }
 
-  const endpoint = `${url.replace(/\/$/, "")}/rest/v1/reference_time_events`;
+  const restEndpoint = `${url.replace(/\/$/, "")}/rest/v1/reference_time_events`;
+  const endpoint = `${url.replace(/\/$/, "")}/rest/v1/rpc/log_reference_time_event`;
   const payload = {
-    action_type: actionType,
-    reference_time: state.referenceTime.toISOString(),
-    local_reference_time: formatInputDate(state.referenceTime),
-    day_type: getDayTypeKey(state.referenceTime),
-    source: "web",
+    p_action_type: actionType,
+    p_reference_time: state.referenceTime.toISOString(),
+    p_local_reference_time: formatInputDate(state.referenceTime),
+    p_day_type: getDayTypeKey(state.referenceTime),
+    p_source: "web",
   };
 
   try {
@@ -154,13 +155,44 @@ async function persistReferenceEvent(actionType) {
         apikey: anonKey,
         Authorization: `Bearer ${anonKey}`,
         "Content-Type": "application/json",
-        Prefer: "return=minimal",
       },
       body: JSON.stringify(payload),
     });
 
+    const responseText = await response.text();
+    let insertedRow = null;
+    if (responseText) {
+      try {
+        insertedRow = JSON.parse(responseText);
+      } catch {
+        insertedRow = null;
+      }
+    }
+
     if (!response.ok) {
       if (response.status === 404) {
+        const fallbackResponse = await fetch(restEndpoint, {
+          method: "POST",
+          headers: {
+            apikey: anonKey,
+            Authorization: `Bearer ${anonKey}`,
+            "Content-Type": "application/json",
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({
+            action_type: actionType,
+            reference_time: state.referenceTime.toISOString(),
+            local_reference_time: formatInputDate(state.referenceTime),
+            day_type: getDayTypeKey(state.referenceTime),
+            source: "web",
+          }),
+        });
+
+        if (fallbackResponse.ok) {
+          setSyncStatus(`Supabase에 저장됨 · ${actionType}`, "good");
+          return;
+        }
+
         setSyncStatus("Supabase 테이블이 아직 없어요. supabase-schema.sql을 실행해 주세요.", "warn");
       } else {
         setSyncStatus(`Supabase 저장 실패 (${response.status})`, "warn");
@@ -168,7 +200,23 @@ async function persistReferenceEvent(actionType) {
       return;
     }
 
-    setSyncStatus("Supabase에 저장됨", "good");
+    if (insertedRow && typeof insertedRow === "object") {
+      const createdAt = insertedRow.created_at
+        ? new Date(insertedRow.created_at).toLocaleString("ko-KR", {
+            dateStyle: "short",
+            timeStyle: "short",
+          })
+        : "";
+      setSyncStatus(
+        createdAt
+          ? `Supabase에 저장됨 · ${actionType} · ${createdAt}`
+          : `Supabase에 저장됨 · ${actionType}`,
+        "good",
+      );
+      return;
+    }
+
+    setSyncStatus(`Supabase에 저장됨 · ${actionType}`, "good");
   } catch {
     setSyncStatus("Supabase 연결 실패", "warn");
   }

@@ -1,7 +1,7 @@
 ﻿window.REAL_TIMETABLE = {
     "meta":  {
                  "title":  "last train data",
-                 "updatedAt":  "2026-07-08T14:06:07.4644522+09:00",
+                 "updatedAt":  "2026-07-08T14:44:06.0071139+09:00",
                  "dayTypes":  {
                                   "weekday":  "01",
                                   "saturday":  "02",
@@ -12,7 +12,7 @@
                       "weekday":  {
                                       "meta":  {
                                                    "title":  "last train data",
-                                                   "updatedAt":  "2026-07-08T14:06:07.4644522+09:00",
+                                                   "updatedAt":  "2026-07-08T14:44:06.0078044+09:00",
                                                    "dayTypeCode":  "01"
                                                },
                                       "routes":  [
@@ -649,7 +649,7 @@
                       "saturday":  {
                                        "meta":  {
                                                     "title":  "last train data",
-                                                    "updatedAt":  "2026-07-08T14:06:23.1522372+09:00",
+                                                    "updatedAt":  "2026-07-08T14:44:09.6390481+09:00",
                                                     "dayTypeCode":  "02"
                                                 },
                                        "routes":  [
@@ -686,7 +686,7 @@
                       "sunday":  {
                                      "meta":  {
                                                   "title":  "last train data",
-                                                  "updatedAt":  "2026-07-08T14:06:30.1995020+09:00",
+                                                  "updatedAt":  "2026-07-08T14:44:15.1909806+09:00",
                                                   "dayTypeCode":  "03"
                                               },
                                      "routes":  [

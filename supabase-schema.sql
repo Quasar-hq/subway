@@ -19,6 +19,20 @@ begin
     from pg_policies
     where schemaname = 'public'
       and tablename = 'reference_time_events'
+      and policyname = 'allow anon select'
+  ) then
+    create policy "allow anon select"
+      on public.reference_time_events
+      for select
+      to anon
+      using (true);
+  end if;
+
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'reference_time_events'
       and policyname = 'allow anon insert'
   ) then
     create policy "allow anon insert"
@@ -28,3 +42,40 @@ begin
       with check (true);
   end if;
 end $$;
+
+create or replace function public.log_reference_time_event(
+  p_action_type text,
+  p_reference_time timestamptz,
+  p_local_reference_time text,
+  p_day_type text,
+  p_source text default 'web'
+)
+returns public.reference_time_events
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  inserted_row public.reference_time_events;
+begin
+  insert into public.reference_time_events (
+    action_type,
+    reference_time,
+    local_reference_time,
+    day_type,
+    source
+  )
+  values (
+    p_action_type,
+    p_reference_time,
+    p_local_reference_time,
+    p_day_type,
+    coalesce(p_source, 'web')
+  )
+  returning * into inserted_row;
+
+  return inserted_row;
+end;
+$$;
+
+grant execute on function public.log_reference_time_event(text, timestamptz, text, text, text) to anon;
