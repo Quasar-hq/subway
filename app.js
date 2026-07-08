@@ -124,6 +124,14 @@ function initGoogleAnalytics(measurementId) {
   window.gtag("config", measurementId);
 }
 
+function trackGoogleAnalyticsEvent(eventName, params = {}) {
+  if (typeof window.gtag !== "function") {
+    return;
+  }
+
+  window.gtag("event", eventName, params);
+}
+
 function setSyncStatus(message, tone = "muted") {
   if (!els.syncStatus) {
     return;
@@ -425,11 +433,19 @@ els.baseTime.addEventListener("change", () => {
 els.nowTime.addEventListener("click", () => {
   syncReferenceTime(new Date());
   render();
+  trackGoogleAnalyticsEvent("current_time_click", {
+    event_category: "reference_time",
+    event_label: "current_time",
+  });
   void persistReferenceEvent("current_time");
 });
 
 els.recalc.addEventListener("click", () => {
   render();
+  trackGoogleAnalyticsEvent("reference_time_refresh", {
+    event_category: "reference_time",
+    event_label: "recalc",
+  });
   void persistReferenceEvent("recalc");
 });
 
