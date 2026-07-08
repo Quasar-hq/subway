@@ -102,6 +102,28 @@ function getSupabaseConfig() {
   return window.SUPABASE_CONFIG || {};
 }
 
+function initGoogleAnalytics(measurementId) {
+  if (!measurementId || window.__gaInitialized) {
+    return;
+  }
+
+  window.__gaInitialized = true;
+  window.dataLayer = window.dataLayer || [];
+  window.gtag =
+    window.gtag ||
+    function gtag() {
+      window.dataLayer.push(arguments);
+    };
+
+  const script = document.createElement("script");
+  script.async = true;
+  script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(measurementId)}`;
+  document.head.appendChild(script);
+
+  window.gtag("js", new Date());
+  window.gtag("config", measurementId);
+}
+
 function setSyncStatus(message, tone = "muted") {
   if (!els.syncStatus) {
     return;
@@ -412,4 +434,5 @@ els.recalc.addEventListener("click", () => {
 });
 
 hydrateForm();
+initGoogleAnalytics(getSupabaseConfig().gaMeasurementId);
 render();
