@@ -97,6 +97,10 @@ const els = {
   inboundStatus: document.getElementById("inbound-status"),
 };
 
+function getSupabaseConfig() {
+  return window.SUPABASE_CONFIG || {};
+}
+
 function pad(num) {
   return String(num).padStart(2, "0");
 }
@@ -115,6 +119,33 @@ function formatInputDate(date) {
 function syncReferenceTime(date) {
   state.referenceTime = date;
   els.baseTime.value = formatInputDate(date);
+}
+
+function persistReferenceEvent(actionType) {
+  const { url, anonKey } = getSupabaseConfig();
+  if (!url || !anonKey) {
+    return;
+  }
+
+  const endpoint = `${url.replace(/\/$/, "")}/rest/v1/reference_time_events`;
+  const payload = {
+    action_type: actionType,
+    reference_time: state.referenceTime.toISOString(),
+    local_reference_time: formatInputDate(state.referenceTime),
+    day_type: getDayTypeKey(state.referenceTime),
+    source: "web",
+  };
+
+  fetch(endpoint, {
+    method: "POST",
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify(payload),
+  }).catch(() => {});
 }
 
 function getDayTypeKey(date) {
@@ -297,10 +328,12 @@ els.baseTime.addEventListener("change", () => {
 els.nowTime.addEventListener("click", () => {
   syncReferenceTime(new Date());
   render();
+  persistReferenceEvent("current_time");
 });
 
 els.recalc.addEventListener("click", () => {
   render();
+  persistReferenceEvent("recalc");
 });
 
 hydrateForm();

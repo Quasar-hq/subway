@@ -32,6 +32,14 @@ powershell.exe -ExecutionPolicy Bypass -File .\refresh-schedule.ps1
 
 이 스크립트가 `SubwayInfo`의 실시간 시간표를 다시 받아 `schedule-data.js`를 덮어씁니다.
 
+## Supabase 저장
+
+기준 시각 변경 기록은 `supabase-config.js`에 Supabase URL과 anon key를 넣으면 `public.reference_time_events` 테이블로 저장됩니다.
+
+1. `supabase-schema.sql`을 Supabase SQL Editor에서 실행합니다.
+2. `supabase-config.js`의 `url`과 `anonKey`를 채웁니다.
+3. 앱에서 `현재 시각` 또는 `갱신`을 누르면 기록이 저장됩니다.
+
 ## 다음 단계
 
 - 실제 시간표가 안 보이면 브라우저에서 API 호출이 막힌 것일 수 있으니, 그때는 알려주면 대체 방식으로 바로 바꿔드릴게요.
