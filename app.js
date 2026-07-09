@@ -1,4 +1,5 @@
-const TRANSFER_MINUTES = 4;
+// Seoul Metro transfer CSV 기준 1분 53초를 올림한 2분에 +1분 버퍼를 더한다.
+const TRANSFER_MINUTES = 2 + 1;
 const WALK_MINUTES = 5;
 const DAY_MINUTES = 24 * 60;
 const MAX_TRANSFER_WAIT_MINUTES = 60;
@@ -129,81 +130,6 @@ function trackGoogleAnalyticsEvent(eventName, params = {}) {
   }
 
   window.gtag("event", eventName, params);
-}
-
-function formatInputDate(date) {
-  const tzOffset = date.getTimezoneOffset() * 60000;
-  const local = new Date(date.getTime() - tzOffset);
-  return local.toISOString().slice(0, 16);
-}
-
-async function persistSelectionEvent(actionType, details = {}) {
-  const { url, anonKey } = getSupabaseConfig();
-  if (!url || !anonKey) {
-    return;
-  }
-
-  const now = new Date();
-  const endpoint = `${url.replace(/\/$/, "")}/rest/v1/rpc/log_reference_time_event`;
-  const fallbackEndpoint = `${url.replace(/\/$/, "")}/rest/v1/reference_time_events`;
-  const payload = {
-    p_action_type: actionType,
-    p_reference_time: now.toISOString(),
-    p_local_reference_time: formatInputDate(now),
-    p_day_type: getDayTypeKey(now),
-    p_source: "web",
-    p_origin_station: details.originStation || null,
-    p_destination_station: details.destinationStation || null,
-    p_route_key: details.routeKey || null,
-  };
-
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        apikey: anonKey,
-        Authorization: `Bearer ${anonKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok && response.status === 404) {
-      await fetch(fallbackEndpoint, {
-        method: "POST",
-        headers: {
-          apikey: anonKey,
-          Authorization: `Bearer ${anonKey}`,
-          "Content-Type": "application/json",
-          Prefer: "return=minimal",
-        },
-        body: JSON.stringify({
-          action_type: actionType,
-          reference_time: now.toISOString(),
-          local_reference_time: formatInputDate(now),
-          day_type: getDayTypeKey(now),
-          source: "web",
-          origin_station: details.originStation || null,
-          destination_station: details.destinationStation || null,
-          route_key: details.routeKey || null,
-        }),
-      });
-    }
-  } catch {
-    // Ignore analytics/storage failures.
-  }
-}
-
-function trackStationSelection(role, station) {
-  if (!station) {
-    return;
-  }
-
-  const eventName = `${role}_selected_${station}`;
-  trackGoogleAnalyticsEvent(eventName, {
-    event_category: "route",
-    event_label: station,
-  });
 }
 
 function setPickerStatus(message, tone = "muted") {
@@ -497,13 +423,6 @@ function startRoute(origin, destination, options = {}) {
   setPickerStatus("", "muted");
   showMainContent();
   renderSelectedRoute();
-  trackStationSelection("origin", origin);
-  trackStationSelection("destination", destination);
-  void persistSelectionEvent("route_submit", {
-    originStation: origin,
-    destinationStation: destination,
-    routeKey,
-  });
 
   if (options.track !== false) {
     trackGoogleAnalyticsEvent("route_selected", {
@@ -553,15 +472,6 @@ els.routeForm.addEventListener("submit", (event) => {
 });
 
 els.editRoute.addEventListener("click", () => {
-  trackGoogleAnalyticsEvent("back_to_picker", {
-    event_category: "navigation",
-    event_label: "back_to_picker",
-  });
-  void persistSelectionEvent("back_to_picker", {
-    originStation: state.origin,
-    destinationStation: state.destination,
-    routeKey: state.routeKey,
-  });
   showPicker();
 });
 
