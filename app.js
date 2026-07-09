@@ -1,10 +1,20 @@
 const TRANSFER_MINUTES = 4;
 const WALK_MINUTES = 5;
+const DAY_MINUTES = 24 * 60;
+const MAX_TRANSFER_WAIT_MINUTES = 60;
 
-const routeTemplates = {
+const STATIONS = {
+  skku: "성균관대역",
+  hyehwa: "혜화역",
+};
+
+const ROUTE_TEMPLATES = {
   outbound: {
     id: "outbound",
+    origin: "skku",
+    destination: "hyehwa",
     label: "성균관대역 → 혜화역",
+    direction: "1호선 → 4호선",
     legs: [
       {
         from: "성균관대역",
@@ -18,7 +28,7 @@ const routeTemplates = {
         from: "금정역",
         to: "혜화역",
         line: "4호선",
-        direction: "당고개 방면",
+        direction: "혜화 방면",
         travelMinutes: 29,
         departures: ["23:07", "23:20", "23:36", "23:51", "00:06", "00:16", "00:31"],
       },
@@ -26,7 +36,10 @@ const routeTemplates = {
   },
   inbound: {
     id: "inbound",
+    origin: "hyehwa",
+    destination: "skku",
     label: "혜화역 → 성균관대역",
+    direction: "4호선 → 1호선",
     legs: [
       {
         from: "혜화역",
@@ -40,7 +53,7 @@ const routeTemplates = {
         from: "금정역",
         to: "성균관대역",
         line: "1호선",
-        direction: "서울/광운대 방면",
+        direction: "수원/광운대 방면",
         travelMinutes: 16,
         departures: ["23:03", "23:17", "23:32", "23:48", "00:02", "00:18", "00:33"],
       },
@@ -49,53 +62,39 @@ const routeTemplates = {
 };
 
 const fallbackSchedule = {
-  meta: {
-    title: "막타 시간표",
-    updatedAt: new Date().toISOString(),
+  schedules: {
+    weekday: { routes: [ROUTE_TEMPLATES.outbound, ROUTE_TEMPLATES.inbound] },
+    saturday: { routes: [ROUTE_TEMPLATES.outbound, ROUTE_TEMPLATES.inbound] },
+    sunday: { routes: [ROUTE_TEMPLATES.outbound, ROUTE_TEMPLATES.inbound] },
   },
-  routes: [routeTemplates.outbound, routeTemplates.inbound],
 };
-
-function mergeScheduleData(source) {
-  const mergedRoutes = [routeTemplates.outbound, routeTemplates.inbound].map(
-    (templateRoute, routeIndex) => {
-      const sourceRoute = source?.routes?.[routeIndex] || {};
-      return {
-        ...templateRoute,
-        ...sourceRoute,
-        legs: templateRoute.legs.map((templateLeg, legIndex) => ({
-          ...templateLeg,
-          ...(sourceRoute.legs?.[legIndex] || {}),
-          departures: sourceRoute.legs?.[legIndex]?.departures || templateLeg.departures,
-        })),
-      };
-    },
-  );
-
-  return {
-    meta: source?.meta || fallbackSchedule.meta,
-    routes: mergedRoutes,
-  };
-}
 
 const state = {
   referenceTime: new Date(),
   schedule: null,
+  routeKey: null,
+  origin: null,
+  destination: null,
+  renderTimer: null,
 };
 
 const els = {
-  baseTime: document.getElementById("base-time"),
-  nowTime: document.getElementById("now-time"),
-  recalc: document.getElementById("recalc"),
-  syncStatus: document.getElementById("sync-status"),
-  timelineOutbound: document.getElementById("timeline-outbound"),
-  timelineInbound: document.getElementById("timeline-inbound"),
-  outboundDeparture: document.getElementById("outbound-departure"),
-  outboundArrival: document.getElementById("outbound-arrival"),
-  outboundStatus: document.getElementById("outbound-status"),
-  inboundDeparture: document.getElementById("inbound-departure"),
-  inboundArrival: document.getElementById("inbound-arrival"),
-  inboundStatus: document.getElementById("inbound-status"),
+  routePicker: document.getElementById("route-picker"),
+  routeForm: document.getElementById("route-form"),
+  originStation: document.getElementById("origin-station"),
+  destinationStation: document.getElementById("destination-station"),
+  pickerStatus: document.getElementById("picker-status"),
+  mainContent: document.getElementById("main-content"),
+  editRoute: document.getElementById("edit-route"),
+  countdownValue: document.getElementById("countdown-value"),
+  countdownLabel: document.getElementById("countdown-label"),
+  routeSummary: document.getElementById("route-summary"),
+  routeTitle: document.getElementById("route-title"),
+  routeDirection: document.getElementById("route-direction"),
+  timeline: document.getElementById("timeline"),
+  routeDeparture: document.getElementById("route-departure"),
+  routeArrival: document.getElementById("route-arrival"),
+  routeStatus: document.getElementById("route-status"),
 };
 
 function getSupabaseConfig() {
@@ -132,50 +131,30 @@ function trackGoogleAnalyticsEvent(eventName, params = {}) {
   window.gtag("event", eventName, params);
 }
 
-function setSyncStatus(message, tone = "muted") {
-  if (!els.syncStatus) {
-    return;
-  }
-
-  els.syncStatus.textContent = message;
-  els.syncStatus.className = `sync-status ${tone}`;
-}
-
-function pad(num) {
-  return String(num).padStart(2, "0");
-}
-
-function parseClock(value) {
-  const [hours, minutes] = value.split(":").map(Number);
-  return hours * 60 + minutes;
-}
-
 function formatInputDate(date) {
   const tzOffset = date.getTimezoneOffset() * 60000;
   const local = new Date(date.getTime() - tzOffset);
   return local.toISOString().slice(0, 16);
 }
 
-function syncReferenceTime(date) {
-  state.referenceTime = date;
-  els.baseTime.value = formatInputDate(date);
-}
-
-async function persistReferenceEvent(actionType) {
+async function persistSelectionEvent(actionType, details = {}) {
   const { url, anonKey } = getSupabaseConfig();
   if (!url || !anonKey) {
-    setSyncStatus("Supabase 설정이 비어 있어 저장하지 않았습니다.", "warn");
     return;
   }
 
-  const restEndpoint = `${url.replace(/\/$/, "")}/rest/v1/reference_time_events`;
+  const now = new Date();
   const endpoint = `${url.replace(/\/$/, "")}/rest/v1/rpc/log_reference_time_event`;
+  const fallbackEndpoint = `${url.replace(/\/$/, "")}/rest/v1/reference_time_events`;
   const payload = {
     p_action_type: actionType,
-    p_reference_time: state.referenceTime.toISOString(),
-    p_local_reference_time: formatInputDate(state.referenceTime),
-    p_day_type: getDayTypeKey(state.referenceTime),
+    p_reference_time: now.toISOString(),
+    p_local_reference_time: formatInputDate(now),
+    p_day_type: getDayTypeKey(now),
     p_source: "web",
+    p_origin_station: details.originStation || null,
+    p_destination_station: details.destinationStation || null,
+    p_route_key: details.routeKey || null,
   };
 
   try {
@@ -189,105 +168,168 @@ async function persistReferenceEvent(actionType) {
       body: JSON.stringify(payload),
     });
 
-    const responseText = await response.text();
-    let insertedRow = null;
-    if (responseText) {
-      try {
-        insertedRow = JSON.parse(responseText);
-      } catch {
-        insertedRow = null;
-      }
+    if (!response.ok && response.status === 404) {
+      await fetch(fallbackEndpoint, {
+        method: "POST",
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${anonKey}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          action_type: actionType,
+          reference_time: now.toISOString(),
+          local_reference_time: formatInputDate(now),
+          day_type: getDayTypeKey(now),
+          source: "web",
+          origin_station: details.originStation || null,
+          destination_station: details.destinationStation || null,
+          route_key: details.routeKey || null,
+        }),
+      });
     }
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        const fallbackResponse = await fetch(restEndpoint, {
-          method: "POST",
-          headers: {
-            apikey: anonKey,
-            Authorization: `Bearer ${anonKey}`,
-            "Content-Type": "application/json",
-            Prefer: "return=minimal",
-          },
-          body: JSON.stringify({
-            action_type: actionType,
-            reference_time: state.referenceTime.toISOString(),
-            local_reference_time: formatInputDate(state.referenceTime),
-            day_type: getDayTypeKey(state.referenceTime),
-            source: "web",
-          }),
-        });
-
-        if (fallbackResponse.ok) {
-          setSyncStatus(`Supabase에 저장됨 · ${actionType}`, "good");
-          return;
-        }
-
-        setSyncStatus("Supabase 테이블이 아직 없어요. supabase-schema.sql을 실행해 주세요.", "warn");
-      } else {
-        setSyncStatus(`Supabase 저장 실패 (${response.status})`, "warn");
-      }
-      return;
-    }
-
-    if (insertedRow && typeof insertedRow === "object") {
-      const createdAt = insertedRow.created_at
-        ? new Date(insertedRow.created_at).toLocaleString("ko-KR", {
-            dateStyle: "short",
-            timeStyle: "short",
-          })
-        : "";
-      setSyncStatus(
-        createdAt
-          ? `Supabase에 저장됨 · ${actionType} · ${createdAt}`
-          : `Supabase에 저장됨 · ${actionType}`,
-        "good",
-      );
-      return;
-    }
-
-    setSyncStatus(`Supabase에 저장됨 · ${actionType}`, "good");
   } catch {
-    setSyncStatus("Supabase 연결 실패", "warn");
+    // Ignore analytics/storage failures.
   }
+}
+
+function trackStationSelection(role, station) {
+  if (!station) {
+    return;
+  }
+
+  const eventName = `${role}_selected_${station}`;
+  trackGoogleAnalyticsEvent(eventName, {
+    event_category: "route",
+    event_label: station,
+  });
+}
+
+function setPickerStatus(message, tone = "muted") {
+  els.pickerStatus.textContent = message;
+  els.pickerStatus.className = `picker-status ${tone}`;
+}
+
+function pad(num) {
+  return String(num).padStart(2, "0");
+}
+
+function parseClock(value) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
 }
 
 function getDayTypeKey(date) {
   const day = date.getDay();
-  if (day === 0) {
-    return "sunday";
-  }
-
-  if (day === 6) {
-    return "saturday";
-  }
-
+  if (day === 0) return "sunday";
+  if (day === 6) return "saturday";
   return "weekday";
 }
 
 function getScheduleForDate(date) {
   const source = window.REAL_TIMETABLE || fallbackSchedule;
   const key = getDayTypeKey(date);
-  return source?.schedules?.[key] || source;
+  return source?.schedules?.[key] || fallbackSchedule.schedules.weekday;
 }
 
-function getReferenceMinutes() {
-  const selected = new Date(els.baseTime.value);
-  if (Number.isNaN(selected.getTime())) {
-    return state.referenceTime.getHours() * 60 + state.referenceTime.getMinutes();
+function getRouteKey(origin, destination) {
+  if (origin === "skku" && destination === "hyehwa") return "outbound";
+  if (origin === "hyehwa" && destination === "skku") return "inbound";
+  return null;
+}
+
+function getRouteMeta(routeKey) {
+  return ROUTE_TEMPLATES[routeKey] || null;
+}
+
+function applyStationConstraints() {
+  const origin = els.originStation.value;
+  const destination = els.destinationStation.value;
+
+  if (origin && destination && origin === destination) {
+    if (document.activeElement === els.originStation) {
+      els.destinationStation.value = "";
+    } else {
+      els.originStation.value = "";
+    }
+    setPickerStatus("출발지와 목적지는 서로 다르게 선택해 주세요.", "warn");
   }
 
-  state.referenceTime = selected;
-  return selected.getHours() * 60 + selected.getMinutes();
+  [...els.originStation.options].forEach((option) => {
+    option.disabled = option.value !== "" && option.value === destination;
+  });
+
+  [...els.destinationStation.options].forEach((option) => {
+    option.disabled = option.value !== "" && option.value === origin;
+  });
+}
+
+function showMainContent() {
+  els.routePicker.hidden = true;
+  els.mainContent.hidden = false;
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+function showPicker() {
+  els.routePicker.hidden = false;
+  els.mainContent.hidden = true;
+  window.scrollTo({ top: 0, behavior: "auto" });
+
+  state.referenceTime = new Date();
+  state.schedule = null;
+  state.routeKey = null;
+  state.origin = null;
+  state.destination = null;
+  els.originStation.value = "";
+  els.destinationStation.value = "";
+  setPickerStatus("", "muted");
+  updateCountdownDisplay(null);
 }
 
 function minutesToLabel(minutes) {
-  const sameDayMinutes = ((minutes % 1440) + 1440) % 1440;
-  const hours = Math.floor(sameDayMinutes / 60);
-  const mins = sameDayMinutes % 60;
+  const normalized = ((minutes % DAY_MINUTES) + DAY_MINUTES) % DAY_MINUTES;
+  const hours = Math.floor(normalized / 60);
+  const mins = normalized % 60;
   const period = hours < 12 ? "오전" : "오후";
   const hour12 = hours % 12 || 12;
-  return `${period} ${hour12}:${pad(mins)}`;
+  const prefix = minutes >= DAY_MINUTES ? "익일 " : "";
+  return `${prefix}${period} ${hour12}:${pad(mins)}`;
+}
+
+function mergeRouteData(sourceRoute, templateRoute) {
+  return {
+    ...templateRoute,
+    ...(sourceRoute || {}),
+    legs: templateRoute.legs.map((templateLeg, legIndex) => ({
+      ...templateLeg,
+      ...(sourceRoute?.legs?.[legIndex] || {}),
+      departures: sourceRoute?.legs?.[legIndex]?.departures || templateLeg.departures,
+    })),
+  };
+}
+
+function getSelectedRoute(date, routeKey) {
+  const schedule = getScheduleForDate(date);
+  const routeIndex = routeKey === "outbound" ? 0 : 1;
+  const sourceRoute = schedule?.routes?.[routeIndex] || {};
+  const templateRoute = ROUTE_TEMPLATES[routeKey];
+  return mergeRouteData(sourceRoute, templateRoute);
+}
+
+function getSameDayCandidates(departures, earliestMinutes = 0) {
+  return [...new Set(departures.map((value) => parseClock(value)))].filter(
+    (minutes) => minutes >= earliestMinutes && minutes < DAY_MINUTES,
+  );
+}
+
+function getConnectionCandidates(departures, earliestMinutes = 0) {
+  const latestAllowed = earliestMinutes + MAX_TRANSFER_WAIT_MINUTES;
+
+  return [...new Set(departures.flatMap((value) => {
+    const base = parseClock(value);
+    return [base, base + DAY_MINUTES];
+  }))].filter((minutes) => minutes >= earliestMinutes && minutes <= latestAllowed);
 }
 
 function computeRoute(route, referenceMinutes) {
@@ -311,10 +353,10 @@ function computeRoute(route, referenceMinutes) {
     }
 
     const leg = route.legs[legIndex];
-    const candidates = leg.departures
-      .map((value) => parseClock(value))
-      .sort((a, b) => a - b)
-      .filter((minutes) => minutes >= earliestMinutes);
+    const candidates =
+      legIndex === 0
+        ? getSameDayCandidates(leg.departures, earliestMinutes)
+        : getConnectionCandidates(leg.departures, earliestMinutes).sort((a, b) => a - b);
 
     for (const departure of candidates) {
       const arrival = departure + leg.travelMinutes;
@@ -344,19 +386,12 @@ function computeRoute(route, referenceMinutes) {
       lastArrival: null,
       steps: route.legs.map((leg) => ({
         title: `${leg.from} → ${leg.to}`,
-        detail: "오늘 시간표에서 이어지는 막차를 찾지 못했어요.",
+        detail: "현재 시간 기준으로 이어지는 막차를 찾지 못했습니다.",
       })),
-      bufferMinutes: null,
     };
   }
 
-  return {
-    feasible: true,
-    chosenDeparture: bestPlan.chosenDeparture,
-    lastArrival: bestPlan.lastArrival,
-    steps: bestPlan.steps,
-    bufferMinutes: null,
-  };
+  return bestPlan;
 }
 
 function createTimelineMarkup(route, result) {
@@ -378,77 +413,158 @@ function createTimelineMarkup(route, result) {
     .join("");
 }
 
-function applyResult(prefix, result) {
-  const departureEl = els[`${prefix}Departure`];
-  const arrivalEl = els[`${prefix}Arrival`];
-  const statusEl = els[`${prefix}Status`];
+function formatCountdown(targetDeparture) {
+  if (targetDeparture == null) {
+    return { value: "-", label: "-" };
+  }
 
-  if (!result.feasible) {
-    departureEl.textContent = "-";
-    arrivalEl.textContent = "-";
-    statusEl.textContent = "막차 없음";
-    statusEl.className = "warn";
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+  const diff = targetDeparture - nowMinutes;
+
+  if (diff <= 0) {
+    return { value: "막차 종료", label: "오늘 막차가 지났습니다" };
+  }
+
+  const totalSeconds = Math.round(diff * 60);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const value = `${hours > 0 ? `${hours}시간 ` : ""}${pad(minutes)}분 ${pad(seconds)}초`;
+  const label = hours > 0 ? "남은 시간" : "곧 막차가 출발합니다";
+
+  return { value, label };
+}
+
+function updateCountdownDisplay(targetDeparture) {
+  if (!els.countdownValue || !els.countdownLabel) {
     return;
   }
 
-  departureEl.textContent = minutesToLabel(result.chosenDeparture);
-  arrivalEl.textContent = minutesToLabel(result.lastArrival);
-  statusEl.textContent = "막차 확인";
-  statusEl.className = "good";
+  const { value, label } = formatCountdown(targetDeparture);
+  els.countdownValue.textContent = value;
+  els.countdownLabel.textContent = label;
 }
 
-function render() {
-  const referenceMinutes = getReferenceMinutes();
-  const schedule = mergeScheduleData(getScheduleForDate(state.referenceTime));
-  state.schedule = schedule;
-  const outbound = computeRoute(schedule.routes[0], referenceMinutes);
-  const inbound = computeRoute(schedule.routes[1], referenceMinutes);
-
-  els.timelineOutbound.innerHTML = createTimelineMarkup(
-    state.schedule.routes[0],
-    outbound,
-  );
-  els.timelineInbound.innerHTML = createTimelineMarkup(
-    state.schedule.routes[1],
-    inbound,
-  );
-
-  applyResult("outbound", outbound);
-  applyResult("inbound", inbound);
-}
-
-function hydrateForm() {
-  syncReferenceTime(state.referenceTime);
-  setSyncStatus("Supabase 연결 대기 중");
-}
-
-els.baseTime.addEventListener("change", () => {
-  const selected = new Date(els.baseTime.value);
-  if (!Number.isNaN(selected.getTime())) {
-    state.referenceTime = selected;
+function applyResult(result) {
+  if (!result.feasible) {
+    els.routeDeparture.textContent = "-";
+    els.routeArrival.textContent = "-";
+    els.routeStatus.textContent = "막차 없음";
+    els.routeStatus.className = "warn";
+    updateCountdownDisplay(null);
+    return;
   }
-  render();
-});
 
-els.nowTime.addEventListener("click", () => {
-  syncReferenceTime(new Date());
-  render();
-  trackGoogleAnalyticsEvent("current_time_click", {
-    event_category: "reference_time",
-    event_label: "current_time",
+  els.routeDeparture.textContent = minutesToLabel(result.chosenDeparture);
+  els.routeArrival.textContent = minutesToLabel(result.lastArrival);
+  els.routeStatus.textContent = "막차 확인";
+  els.routeStatus.className = "good";
+  updateCountdownDisplay(result.chosenDeparture);
+}
+
+function renderSelectedRoute() {
+  if (!state.routeKey) {
+    return;
+  }
+
+  const now = new Date();
+  state.referenceTime = now;
+  const referenceMinutes = now.getHours() * 60 + now.getMinutes();
+  const routeMeta = getRouteMeta(state.routeKey);
+  const route = getSelectedRoute(now, state.routeKey);
+
+  state.schedule = route;
+  const result = computeRoute(route, referenceMinutes);
+
+  els.routeSummary.textContent = "환승시간까지 고려한 막차시간";
+  els.routeTitle.textContent = "막차 정보";
+  els.routeDirection.textContent = routeMeta.direction;
+  els.timeline.innerHTML = createTimelineMarkup(route, result);
+  applyResult(result);
+}
+
+function startRoute(origin, destination, options = {}) {
+  const routeKey = getRouteKey(origin, destination);
+  if (!routeKey) {
+    setPickerStatus("출발지와 목적지는 서로 다르게 선택해 주세요.", "warn");
+    return false;
+  }
+
+  state.origin = origin;
+  state.destination = destination;
+  state.routeKey = routeKey;
+  setPickerStatus("", "muted");
+  showMainContent();
+  renderSelectedRoute();
+  trackStationSelection("origin", origin);
+  trackStationSelection("destination", destination);
+  void persistSelectionEvent("route_submit", {
+    originStation: origin,
+    destinationStation: destination,
+    routeKey,
   });
-  void persistReferenceEvent("current_time");
+
+  if (options.track !== false) {
+    trackGoogleAnalyticsEvent("route_selected", {
+      event_category: "route",
+      event_label: `${origin}_to_${destination}`,
+    });
+  }
+
+  return true;
+}
+
+function hydrateRouteSelection() {
+  showPicker();
+}
+
+function startRenderLoop() {
+  if (state.renderTimer) {
+    clearInterval(state.renderTimer);
+  }
+
+  state.renderTimer = window.setInterval(() => {
+    if (state.routeKey && !els.mainContent.hidden) {
+      renderSelectedRoute();
+    }
+  }, 1000);
+}
+
+els.originStation.addEventListener("change", () => {
+  applyStationConstraints();
 });
 
-els.recalc.addEventListener("click", () => {
-  render();
-  trackGoogleAnalyticsEvent("reference_time_refresh", {
-    event_category: "reference_time",
-    event_label: "recalc",
+els.destinationStation.addEventListener("change", () => {
+  applyStationConstraints();
+});
+
+els.routeForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const origin = els.originStation.value;
+  const destination = els.destinationStation.value;
+
+  if (!origin || !destination) {
+    setPickerStatus("출발지와 목적지를 모두 선택해 주세요.", "warn");
+    return;
+  }
+
+  startRoute(origin, destination);
+});
+
+els.editRoute.addEventListener("click", () => {
+  trackGoogleAnalyticsEvent("back_to_picker", {
+    event_category: "navigation",
+    event_label: "back_to_picker",
   });
-  void persistReferenceEvent("recalc");
+  void persistSelectionEvent("back_to_picker", {
+    originStation: state.origin,
+    destinationStation: state.destination,
+    routeKey: state.routeKey,
+  });
+  showPicker();
 });
 
-hydrateForm();
 initGoogleAnalytics(getSupabaseConfig().gaMeasurementId);
-render();
+hydrateRouteSelection();
+startRenderLoop();

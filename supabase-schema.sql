@@ -4,9 +4,21 @@ create table if not exists public.reference_time_events (
   reference_time timestamptz not null,
   local_reference_time text not null,
   day_type text not null,
+  origin_station text,
+  destination_station text,
+  route_key text,
   source text not null default 'web',
   created_at timestamptz not null default now()
 );
+
+alter table public.reference_time_events
+  add column if not exists origin_station text;
+
+alter table public.reference_time_events
+  add column if not exists destination_station text;
+
+alter table public.reference_time_events
+  add column if not exists route_key text;
 
 alter table public.reference_time_events enable row level security;
 grant usage on schema public to anon;
@@ -48,6 +60,9 @@ create or replace function public.log_reference_time_event(
   p_reference_time timestamptz,
   p_local_reference_time text,
   p_day_type text,
+  p_origin_station text default null,
+  p_destination_station text default null,
+  p_route_key text default null,
   p_source text default 'web'
 )
 returns public.reference_time_events
@@ -63,6 +78,9 @@ begin
     reference_time,
     local_reference_time,
     day_type,
+    origin_station,
+    destination_station,
+    route_key,
     source
   )
   values (
@@ -70,6 +88,9 @@ begin
     p_reference_time,
     p_local_reference_time,
     p_day_type,
+    p_origin_station,
+    p_destination_station,
+    p_route_key,
     coalesce(p_source, 'web')
   )
   returning * into inserted_row;
@@ -78,4 +99,4 @@ begin
 end;
 $$;
 
-grant execute on function public.log_reference_time_event(text, timestamptz, text, text, text) to anon;
+grant execute on function public.log_reference_time_event(text, timestamptz, text, text, text, text, text, text) to anon;

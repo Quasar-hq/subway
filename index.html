@@ -3,90 +3,90 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>막타 | 성균관대역 · 혜화역</title>
+    <title>막타 | 환승시간까지 고려한 막차시간</title>
     <meta
       name="description"
-      content="성균관대역과 혜화역 사이의 막차 시간을 시간표 기준으로 보여주는 서비스"
+      content="성균관대역과 혜화역 사이의 막차 시간을 환승시간까지 고려해 보여주는 웹사이트"
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+KR:wght@400;500;700;900&display=swap"
-      rel="stylesheet"
-    />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap"
-      rel="stylesheet"
-    />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Noto+Sans+KR:wght@400;500;700;900&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="app">
-      <header class="topbar">
-        <div>
+      <section id="route-picker" class="route-picker">
+        <div class="route-picker-copy">
           <h1>막타</h1>
-          <p>성균관대역 · 혜화역 막차</p>
+          <p>환승시간까지 고려한 막차시간을 확인하세요.</p>
         </div>
-        <div class="topbar-actions">
-          <label class="field compact">
-            <span>기준 시각</span>
-            <input id="base-time" type="datetime-local" />
+
+        <form id="route-form" class="route-picker-form">
+          <label class="field">
+            <span>출발지</span>
+            <select id="origin-station" required>
+              <option value="" selected disabled>출발지를 입력하세요</option>
+              <option value="skku">성균관대역</option>
+              <option value="hyehwa">혜화역</option>
+            </select>
           </label>
-          <button id="now-time" class="secondary-btn" type="button">현재 시각</button>
-          <button id="recalc" class="primary-btn" type="button">갱신</button>
-        </div>
-        <p id="sync-status" class="sync-status" aria-live="polite">Supabase 연결 대기 중</p>
-      </header>
 
-      <section class="routes">
-        <article class="route-card">
-          <div class="route-head">
-            <h2>성균관대역 → 혜화역</h2>
-            <span>1호선 → 4호선</span>
-          </div>
-          <div class="timeline" id="timeline-outbound"></div>
-          <div class="result-grid">
-            <div class="result-pill">
-              <span>막차 출발</span>
-              <strong id="outbound-departure">-</strong>
-            </div>
-            <div class="result-pill">
-              <span>도착</span>
-              <strong id="outbound-arrival">-</strong>
-            </div>
-            <div class="result-pill">
-              <span>상태</span>
-              <strong id="outbound-status">-</strong>
-            </div>
-          </div>
-        </article>
+          <label class="field">
+            <span>도착지</span>
+            <select id="destination-station" required>
+              <option value="" selected disabled>목적지를 입력하세요</option>
+              <option value="skku">성균관대역</option>
+              <option value="hyehwa">혜화역</option>
+            </select>
+          </label>
 
-        <article class="route-card">
-          <div class="route-head">
-            <h2>혜화역 → 성균관대역</h2>
-            <span>4호선 → 1호선</span>
-          </div>
-          <div class="timeline" id="timeline-inbound"></div>
-          <div class="result-grid">
-            <div class="result-pill">
-              <span>막차 출발</span>
-              <strong id="inbound-departure">-</strong>
-            </div>
-            <div class="result-pill">
-              <span>도착</span>
-              <strong id="inbound-arrival">-</strong>
-            </div>
-            <div class="result-pill">
-              <span>상태</span>
-              <strong id="inbound-status">-</strong>
-            </div>
-          </div>
-        </article>
+          <button class="primary-btn" type="submit">막차 보기</button>
+        </form>
+
+        <p id="picker-status" class="picker-status" aria-live="polite"></p>
       </section>
+
+      <div id="main-content" hidden>
+        <header class="topbar">
+          <div class="topbar-lead">
+            <button id="edit-route" class="back-btn" type="button">입력화면으로 돌아가기</button>
+            <h1>막타</h1>
+            <p id="route-summary">환승시간까지 고려한 막차시간</p>
+          </div>
+        </header>
+
+        <section class="routes">
+          <article class="route-card">
+            <div class="countdown-panel">
+              <span>현재 시각부터 막차까지</span>
+              <strong id="countdown-value">-</strong>
+              <small id="countdown-label">-</small>
+            </div>
+            <div class="route-head">
+              <h2 id="route-title">막차 정보</h2>
+              <span id="route-direction">-</span>
+            </div>
+            <div class="timeline" id="timeline"></div>
+            <div class="result-grid">
+              <div class="result-pill">
+                <span>막차 출발</span>
+                <strong id="route-departure">-</strong>
+              </div>
+              <div class="result-pill">
+                <span>도착</span>
+                <strong id="route-arrival">-</strong>
+              </div>
+              <div class="result-pill">
+                <span>상태</span>
+                <strong id="route-status">-</strong>
+              </div>
+            </div>
+          </article>
+        </section>
+      </div>
     </main>
     <script src="schedule-data.js"></script>
     <script src="supabase-config.js"></script>
